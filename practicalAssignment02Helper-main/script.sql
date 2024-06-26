@@ -31,6 +31,7 @@ select * from opt_clients;
 select * from opt_orders;
 select * from opt_products;
 
+--query is a request to get data from a database
 
 -- не оптимізовано
 
@@ -38,11 +39,15 @@ select * from opt_products;
 SELECT
     clients.surname AS client_surname,
     clients.name as client_name,
-    --порушуємо нормальну форму.
+
+    --порушуємо нормальну форму
+    --requires significant memory and processing power
     GROUP_CONCAT(products.product_name) AS product_names,
     GROUP_CONCAT(orders.order_date) AS order_dates
 FROM
     opt_orders orders
+
+    --джойни великих таблиць без індексів
 JOIN
     --джойнимо 2 таблички (клієнти і ордери) за айдішкою клієнта
     opt_clients clients ON orders.client_id = clients.id
