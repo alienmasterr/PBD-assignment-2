@@ -40,7 +40,6 @@ SELECT
     clients.surname AS client_surname,
     clients.name as client_name,
 
-    --порушуємо нормальну форму
     --requires significant memory and processing power
     GROUP_CONCAT(products.product_name) AS product_names,
     GROUP_CONCAT(orders.order_date) AS order_dates
@@ -67,10 +66,16 @@ GROUP BY
 
 
 --    оптимізовано
+
+-- use indexes, CTE (Common Table Expressions) to pre-filter the data,
+-- and avoid aggregation functions that concatenate large data sets
+
+--Індекси дозволяють швидше знаходити рядки, що відповідають умовам
 CREATE INDEX idx_client_status_email_phone_name ON opt_clients(status, email(10), phone, name);
 CREATE INDEX idx_order_client_id ON opt_orders(client_id);
 CREATE INDEX idx_order_product_id ON opt_orders(product_id);
 
+--Filters the opt_clients table to include only the relevant clients
 WITH ActiveClients AS (
     SELECT
         id,
@@ -89,14 +94,14 @@ WITH ActiveClients AS (
 SELECT
     ac.surname AS client_surname,
     ac.name AS client_name,
-    p.product_name,
+    product.product_name,
     orders.order_date
 FROM
     opt_orders orders
 JOIN
     ActiveClients ac ON orders.client_id = ac.id
 JOIN
-    opt_products p ON orders.product_id = p.product_id
+    opt_products product ON orders.product_id = product.product_id
 WHERE
     orders.order_date LIKE '2024-%';
 
