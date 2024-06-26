@@ -35,134 +35,161 @@ select * from opt_products;
 
 -- не оптимізовано
 
--- In query to optimize you should use at least 2 joins (you have to join at least 3 tables)
 SELECT
-    clients.surname AS client_surname,
-    clients.name as client_name,
-
-    --requires significant memory and processing power
-    GROUP_CONCAT(products.product_name) AS product_names,
-    GROUP_CONCAT(orders.order_date) AS order_dates
-FROM
-    opt_orders orders
-
-    --джойни великих таблиць без індексів
-JOIN
-    --джойнимо 2 таблички (клієнти і ордери) за айдішкою клієнта
-    opt_clients clients ON orders.client_id = clients.id
-JOIN
-    --джойними 2 таблички (продукти і ордери) за айдішкою продукту
-    opt_products products ON orders.product_id = products.product_id
-WHERE
-    --фільтруємо, все що знайшли
-    clients.status = 'active'
-    AND LENGTH(clients.email) >= 10
-    AND clients.phone LIKE '096%'
-    AND clients.name LIKE 'A%'
-    AND orders.order_date LIKE '2024-%'
-GROUP BY
+    clients.id,
+    clients.name,
     clients.surname,
-    clients.name;
+    clients.email,
+    products.product_name,
+    orders.order_date
+FROM
+    opt_clients AS clients
+JOIN
+    opt_orders AS orders ON clients.id = orders.client_id
+JOIN
+    opt_products AS products ON orders.product_id = products.product_id
+WHERE
+    clients.status = 'active'
+    AND clients.name LIKE 'Anne'
+    and clients.surname like 'M%'
+    AND orders.order_date LIKE '2024-02%'
+
+AND
+        -- підзапит
+    orders.order_date IN (
+        SELECT order_date
+        FROM opt_orders
+
+        WHERE client_id = clients.id
+    );
+
 
 
 --    оптимізовано
+CREATE INDEX idx_clients_status ON opt_clients(status);
+CREATE INDEX idx_orders_client_id ON opt_orders(client_id);
+CREATE INDEX idx_orders_product_id ON opt_orders(product_id);
 
--- use indexes, CTE (Common Table Expressions) to pre-filter the data,
--- and avoid aggregation functions that concatenate large data sets
-
---Індекси дозволяють швидше знаходити рядки, що відповідають умовам
-CREATE INDEX idx_client_status_email_phone_name ON opt_clients(status, email(10), phone, name);
-CREATE INDEX idx_order_client_id ON opt_orders(client_id);
-CREATE INDEX idx_order_product_id ON opt_orders(product_id);
-
---Filters the opt_clients table to include only the relevant clients
-WITH ActiveClients AS (
+WITH ClientOrders AS (
     SELECT
-        id,
-        surname,
-        email,
-        phone,
-        name
+        orders.order_id,
+        orders.order_date,
+        orders.client_id,
+        orders.product_id
     FROM
-        opt_clients
+        opt_orders orders
+    JOIN
+        opt_clients clients ON orders.client_id = clients.id
     WHERE
-        status = 'active'
-        AND LENGTH(email) >= 10
-        AND phone LIKE '096%'
-        AND name LIKE 'A%'
+        clients.status = 'active'
+        AND clients.name LIKE 'Anne'
+    	and clients.surname like 'M%'
+    	AND orders.order_date LIKE '2024-02%'
 )
 SELECT
-    ac.surname AS client_surname,
-    ac.name AS client_name,
-    product.product_name,
-    orders.order_date
+    clientOrders.client_id AS id,
+    clients.name,
+    clients.surname,
+    clients.email,
+    products.product_name,
+    clientOrders.order_date
 FROM
-    opt_orders orders
+    ClientOrders AS clientOrders
 JOIN
-    ActiveClients ac ON orders.client_id = ac.id
+    opt_clients AS clients ON clientOrders.client_id = clients.id
 JOIN
-    opt_products product ON orders.product_id = product.product_id
+    opt_products AS products ON clientOrders.product_id = products.product_id
 WHERE
-    orders.order_date LIKE '2024-%';
+    clientOrders.order_date IN (
+        SELECT order_date
+        -- 1
+        FROM ClientOrders
+        WHERE client_id = clientOrders.client_id
+    )
+AND
+    clientOrders.client_id IN (
+        SELECT client_id
+        -- 2
+        FROM ClientOrders
+        WHERE order_date = clientOrders.order_date
+    );
 
 
 -- неоптимізована
 EXPLAIN
 SELECT
-    clients.surname AS client_surname,
-    clients.name as client_name,
-    GROUP_CONCAT(products.product_name) AS product_names,
-    GROUP_CONCAT(orders.order_date) AS order_dates
+    clients.id,
+    clients.name,
+    clients.surname,
+    clients.email,
+    products.product_name,
+    orders.order_date
 FROM
-    opt_orders orders
+    opt_clients AS clients
 JOIN
-    opt_clients clients ON orders.client_id = clients.id
+    opt_orders AS orders ON clients.id = orders.client_id
 JOIN
-    opt_products products ON orders.product_id = products.product_id
+    opt_products AS products ON orders.product_id = products.product_id
 WHERE
     clients.status = 'active'
-    AND LENGTH(clients.email) >= 10
-    AND clients.phone LIKE '096%'
-    AND clients.name LIKE 'A%'
-    AND orders.order_date LIKE '2024-%'
-GROUP BY
-    clients.surname,
-    clients.name;
+    AND clients.name LIKE 'Anne'
+    and clients.surname like 'M%'
+    AND orders.order_date LIKE '2024-02%'
+
+AND
+        -- підзапит
+    orders.order_date IN (
+        SELECT order_date
+        FROM opt_orders
+
+        WHERE client_id = clients.id
+    );
 
 -- optimized
 EXPLAIN
-WITH ActiveClients AS (
+WITH ClientOrders AS (
     SELECT
-        id,
-        surname,
-        email,
-        phone,
-        name
+        orders.order_id,
+        orders.order_date,
+        orders.client_id,
+        orders.product_id
     FROM
-        opt_clients
+        opt_orders orders
+    JOIN
+        opt_clients clients ON orders.client_id = clients.id
     WHERE
-        status = 'active'
-        AND LENGTH(email) >= 10
-        AND phone LIKE '096%'
-        AND name LIKE 'Al%'
+        clients.status = 'active'
+        AND clients.name LIKE 'Anne'
+    	and clients.surname like 'M%'
+    	AND orders.order_date LIKE '2024-02%'
 )
 SELECT
-    ac.surname AS client_surname,
-    ac.name AS client_name,
-    p.product_name,
-    orders.order_date
+    clientOrders.client_id AS id,
+    clients.name,
+    clients.surname,
+    clients.email,
+    products.product_name,
+    clientOrders.order_date
 FROM
-    opt_orders orders
+    ClientOrders AS clientOrders
 JOIN
-    ActiveClients ac ON orders.client_id = ac.id
+    opt_clients AS clients ON clientOrders.client_id = clients.id
 JOIN
-    opt_products p ON orders.product_id = p.product_id
+    opt_products AS products ON clientOrders.product_id = products.product_id
 WHERE
-    orders.order_date LIKE '2024-%';
-
-
-
-
+    clientOrders.order_date IN (
+        SELECT order_date
+        -- 1
+        FROM ClientOrders
+        WHERE client_id = clientOrders.client_id
+    )
+AND
+    clientOrders.client_id IN (
+        SELECT client_id
+        -- 2
+        FROM ClientOrders
+        WHERE order_date = clientOrders.order_date
+    );
 
 
 -- приклади з гітхаба
